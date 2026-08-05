@@ -13,7 +13,7 @@ import { hexToRgba, iniciales } from '../lib/colores.js'
 import DetallePago from './DetallePago.jsx'
 import FormPago from './FormPago.jsx'
 
-export default function FichaMilitante({ militanteId, etiquetas, onCerrar, onEditar, onCambio }) {
+export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerrar, onEditar, onCambio }) {
   const [m, setM]           = useState(null)
   const [pagos, setPagos]   = useState([])
   const [cargando, setCargando] = useState(true)
@@ -67,13 +67,18 @@ export default function FichaMilitante({ militanteId, etiquetas, onCerrar, onEdi
 
         {/* Cabecera con avatar */}
         <div className="ficha-cabecera">
-          <button className="ficha-editar" onClick={() => onEditar(m)}>✎ Editar</button>
+          <button className="ficha-editar" onClick={() => onEditar({ ...m, _numPagos: pagos.length })}>✎ Editar</button>
           <button className="cerrar" onClick={onCerrar}>✕</button>
-          <div className="avatar grande" style={{
-            background: hexToRgba(color, 0.18), borderColor: color, color,
-          }}>
-            {iniciales(m.nombre)}
-          </div>
+          {fotoUrl
+            ? <div className="avatar grande" style={{ overflow: 'hidden', border: `3px solid ${color}` }}>
+                <img src={fotoUrl} alt={m.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            : <div className="avatar grande" style={{
+                background: hexToRgba(color, 0.18), borderColor: color, color,
+              }}>
+                {iniciales(m.nombre)}
+              </div>
+          }
           <div className="ficha-nombre">{m.nombre}</div>
           <div className="ficha-chips">
             <span className="mini-etiqueta cond">{labelCondicion(m.condicion)}</span>
@@ -97,9 +102,11 @@ export default function FichaMilitante({ militanteId, etiquetas, onCerrar, onEdi
 
           <div className="ficha-seccion-titulo">Militancia</div>
           {fila('Grupo base', m.grupo_base_nombre)}
+          {fila('Ciudad', m.ciudad)}
+          {fila('Estado', m.estado)}
           {fila('Fecha de alta', m.fecha_alta)}
           {fila('Referencia', m.referencia)}
-          {fila('Actividad', m.actividad)}
+          {fila('Actividad', m.actividad_nombre)}
 
           <div className="ficha-seccion-titulo">Cuota</div>
           <div className="ficha-cuota">

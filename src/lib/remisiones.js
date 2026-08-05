@@ -110,3 +110,41 @@ export function calcularCobranza(militantes, idsPagaronEsteMes) {
 
   return { totalEsperado, cobrado, porCobrar, pct }
 }
+
+// ═══ HISTÓRICO DE COBRANZA (para la gráfica de Inicio) ══════
+
+const MESES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+/** 'YYYY-MM' → 'Junio 2026' */
+export function periodoLegible(periodo) {
+  const [y, m] = periodo.split('-')
+  return `${MESES_LARGO[parseInt(m, 10) - 1]} ${y}`
+}
+
+/**
+ * Genera los últimos `cantidad` periodos (YYYY-MM), terminando en
+ * `hastaPeriodo` (o el actual si no se indica). Orden cronológico.
+ */
+export function generarPeriodos(cantidad, hastaPeriodo = null) {
+  const [yFin, mFin] = (hastaPeriodo || periodoActual()).split('-').map(Number)
+  const periodos = []
+  for (let i = cantidad - 1; i >= 0; i--) {
+    const d = new Date(yFin, mFin - 1 - i, 1)
+    periodos.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return periodos
+}
+
+/**
+ * % de cobranza de un periodo específico, usando el padrón activo
+ * actual como referencia de cuotas esperadas (no se guarda un
+ * histórico de altas/bajas por mes, así que esto es una
+ * aproximación razonable basada en quién está activo hoy).
+ */
+export function calcularCobranzaDelPeriodo(militantesActivos, pagos, periodo) {
+  const idsPagaron = new Set(
+    pagos.filter(p => (p.meses_cubre || []).includes(periodo)).map(p => p.militante_id)
+  )
+  return calcularCobranza(militantesActivos, idsPagaron)
+}

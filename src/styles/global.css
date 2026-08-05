@@ -934,3 +934,40 @@ textarea:focus-visible {
   .dash-panel, .cal-dia-panel { margin-left: 16px; margin-right: 16px; }
   .ajustes-cont { padding: 16px; }
 }
+
+/* ═══ MENÚ DE TRES PUNTOS (editar militante) ═══════════════════ */
+
+.menu-punto {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); width: 30px; height: 30px; border-radius: 4px;
+  cursor: pointer; font-size: 16px; line-height: 1;
+}
+.menu-punto:hover { background: var(--surface); }
+
+.menu-desplegable {
+  position: absolute; top: 36px; right: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; min-width: 220px; z-index: 20;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  overflow: hidden;
+}
+.menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 14px; background: none; border: none;
+  color: var(--text); font-family: var(--sans); font-size: 12px;
+  cursor: pointer;
+}
+.menu-item:hover { background: var(--surface2); }
+.menu-item.peligro { color: var(--red-light); }
+.menu-item:disabled { opacity: 0.5; cursor: default; }
+
+/* ═══ SECCIÓN DE BAJAS (plegable) ═══════════════════════════════ */
+
+.bajas-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px; cursor: pointer; color: var(--muted); font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+.bajas-toggle:hover { background: var(--surface2); }
+
+.fila-militante.inactivo { opacity: 0.6; }

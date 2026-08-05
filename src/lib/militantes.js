@@ -28,23 +28,27 @@ export function labelCondicion(id) {
  * Lista todos los militantes activos con su grupo base y las
  * ids de sus etiquetas resueltas en un arreglo `etiquetas`.
  */
-export async function listarMilitantes() {
-  const { data, error } = await supabase()
+export async function listarMilitantes({ incluirInactivos = false } = {}) {
+  let q = supabase()
     .from('militantes')
     .select(`
       *,
       grupo_base:grupos_base(id, nombre),
+      actividad:actividades(id, nombre),
       militante_etiquetas(etiqueta_id)
     `)
-    .eq('activo', true)
     .order('nombre')
 
+  if (!incluirInactivos) q = q.eq('activo', true)
+
+  const { data, error } = await q
   if (error) throw error
 
   // Aplanar: etiquetas como arreglo de ids
   return data.map(m => ({
     ...m,
     grupo_base_nombre: m.grupo_base?.nombre || '',
+    actividad_nombre: m.actividad?.nombre || '',
     etiquetas: (m.militante_etiquetas || []).map(r => r.etiqueta_id),
   }))
 }
@@ -55,6 +59,7 @@ export async function obtenerMilitante(id) {
     .select(`
       *,
       grupo_base:grupos_base(id, nombre),
+      actividad:actividades(id, nombre),
       militante_etiquetas(etiqueta_id)
     `)
     .eq('id', id)
@@ -64,6 +69,7 @@ export async function obtenerMilitante(id) {
   return {
     ...data,
     grupo_base_nombre: data.grupo_base?.nombre || '',
+    actividad_nombre: data.actividad?.nombre || '',
     etiquetas: (data.militante_etiquetas || []).map(r => r.etiqueta_id),
   }
 }
@@ -126,6 +132,55 @@ export async function darDeBajaMilitante(id) {
     .update({ activo: false })
     .eq('id', id)
   if (error) throw error
+}
+
+/** Reactiva a alguien que estaba dado de baja. */
+export async function reactivarMilitante(id) {
+  const { error } = await supabase()
+    .from('militantes')
+    .update({ activo: true })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Elimina un militante de forma PERMANENTE, junto con sus pagos
+ * y etiquetas (por "on delete cascade" en la base de datos).
+ * No se puede deshacer — úsala solo desde el menú de edición,
+ * con confirmación explícita del usuario.
+ */
+export async function eliminarMilitante(id) {
+  const { error } = await supabase()
+    .from('militantes')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Sube la foto de perfil de un militante al bucket "avatares" y
+ * devuelve la ruta guardada (para el campo foto_path).
+ */
+export async function subirFotoPerfil(archivo, militanteId) {
+  const ext = archivo.name.split('.').pop() || 'jpg'
+  const ruta = `${militanteId}/${Date.now()}.${ext}`
+  const { error } = await supabase()
+    .storage
+    .from('avatares')
+    .upload(ruta, archivo, { cacheControl: '3600', upsert: false })
+  if (error) throw error
+  return ruta
+}
+
+/** URL temporal (1h) para mostrar una foto de perfil guardada. */
+export async function urlFotoPerfil(foto_path) {
+  if (!foto_path) return null
+  const { data, error } = await supabase()
+    .storage
+    .from('avatares')
+    .createSignedUrl(foto_path, 3600)
+  if (error) return null
+  return data.signedUrl
 }
 
 // ── Helper interno ───────────────────────────────────────────

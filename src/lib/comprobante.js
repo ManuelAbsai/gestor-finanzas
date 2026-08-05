@@ -24,8 +24,10 @@ function periodoLegible(periodo) {
  * Genera y descarga el PDF de una remisión.
  * remision: fila de la tabla remisiones
  * pagos: pagos incluidos en el periodo (para el detalle)
+ * resumen: { totalMilitantes, aportaron, noAportaron } — SIN nombres,
+ *          solo conteos, para no exponer identidades en el PDF.
  */
-export function descargarComprobante(remision, pagos = []) {
+export function descargarComprobante(remision, pagos = [], resumen = null) {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' })
   const ancho = doc.internal.pageSize.getWidth()
 
@@ -52,7 +54,17 @@ export function descargarComprobante(remision, pagos = []) {
   doc.setTextColor(100, 100, 100)
   doc.text(`Fecha de emisión: ${new Date(remision.fecha_remision).toLocaleDateString('es-MX')}`, 14, y)
 
-  y += 10
+  // Conteos anonimizados (sin nombres) si vienen
+  if (resumen) {
+    y += 6
+    doc.setFontSize(8)
+    doc.text(
+      `${resumen.totalMilitantes} militantes activos · ${resumen.aportaron} aportaron · ${resumen.noAportaron} no aportaron`,
+      14, y
+    )
+  }
+
+  y += 8
   doc.setDrawColor(...ROJO)
   doc.setLineWidth(0.5)
   doc.line(14, y, ancho - 14, y)

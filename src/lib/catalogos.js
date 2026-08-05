@@ -75,3 +75,32 @@ export async function eliminarEtiqueta(id) {
     .eq('id', id)
   if (error) throw error
 }
+
+// ═══ ACTIVIDADES (cargo dentro del partido) ═════════════════
+
+export async function listarActividades() {
+  const { data, error } = await supabase()
+    .from('actividades')
+    .select('*')
+    .order('nombre')
+  if (error) throw error
+  return data
+}
+
+export async function crearActividad(nombre) {
+  const { data, error } = await supabase()
+    .from('actividades')
+    .insert({ nombre: nombre.trim() })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function eliminarActividad(id) {
+  const { error } = await supabase()
+    .from('actividades')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
