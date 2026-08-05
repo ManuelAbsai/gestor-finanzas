@@ -90,6 +90,30 @@ export async function urlEvidencia(evidencia_path) {
   return data.signedUrl
 }
 
+/**
+ * Corrige un pago ya registrado (monto, meses, forma, notas).
+ * No cambia la evidencia — eso queda igual.
+ */
+export async function actualizarPago(id, datos) {
+  const { data, error } = await supabase()
+    .from('pagos')
+    .update(datos)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+/** Elimina un pago registrado por error. No se puede deshacer. */
+export async function eliminarPago(id) {
+  const { error } = await supabase()
+    .from('pagos')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
 // ═══ UTILIDADES DE FORMATO ═══════════════════════════════════
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
