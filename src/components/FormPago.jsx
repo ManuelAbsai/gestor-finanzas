@@ -28,6 +28,7 @@ export default function FormPago({ militante, onGuardado, onCerrar }) {
   const ops = opcionesMeses()
   const [fecha, setFecha]       = useState(new Date().toISOString().slice(0, 10))
   const [meses, setMeses]       = useState([ops.find(o => o.actual).valor])
+  const [mesManual, setMesManual] = useState('')
   const [monto, setMonto]       = useState(militante.cuota_monto || '')
   const [forma, setForma]       = useState('transferencia')
   const [notas, setNotas]       = useState('')
@@ -41,6 +42,26 @@ export default function FormPago({ militante, onGuardado, onCerrar }) {
   function toggleMes(valor) {
     setMeses(prev => prev.includes(valor) ? prev.filter(m => m !== valor) : [...prev, valor])
   }
+
+  function labelDeMes(valor) {
+    const [y, m] = valor.split('-')
+    return `${MESES[parseInt(m, 10) - 1]} ${y}`
+  }
+
+  function agregarMesManual() {
+    if (!mesManual) return
+    setMeses(prev => prev.includes(mesManual) ? prev : [...prev, mesManual])
+    setMesManual('')
+  }
+
+  function quitarMes(valor) {
+    setMeses(prev => prev.filter(m => m !== valor))
+  }
+
+  // Meses seleccionados que no están entre las casillas rápidas
+  // (los agregados a mano, para mostrarlos como chips quitables)
+  const valoresRapidos = ops.map(o => o.valor)
+  const mesesFueraDeRango = meses.filter(m => !valoresRapidos.includes(m))
 
   function onArchivo(e) {
     const file = e.target.files[0]
@@ -126,7 +147,24 @@ export default function FormPago({ militante, onGuardado, onCerrar }) {
                   </label>
                 ))}
               </div>
-              <div className="nota-inline">Marca varios si el pago cubre más de un mes.</div>
+
+              {mesesFueraDeRango.length > 0 && (
+                <div className="meses-checks" style={{ marginTop: 8 }}>
+                  {mesesFueraDeRango.map(v => (
+                    <span key={v} className="mes-check" style={{ background: 'var(--red)', color: '#fff', cursor: 'pointer' }}
+                          onClick={() => quitarMes(v)}>
+                      {labelDeMes(v)} ✕
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input type="month" value={mesManual} onChange={e => setMesManual(e.target.value)}
+                       style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 4, padding: '8px 10px', color: 'var(--text)', fontFamily: 'var(--sans)', fontSize: 12 }} />
+                <button type="button" className="btn-chico" onClick={agregarMesManual}>+ Agregar mes</button>
+              </div>
+              <div className="nota-inline">Marca varios si el pago cubre más de un mes. Para atrasos viejos, usa "Agregar mes".</div>
             </div>
 
             <div className="campo-fila">
