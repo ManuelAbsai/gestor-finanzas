@@ -148,7 +148,7 @@ export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerr
       </div>
 
       {detalle && (
-        <DetallePago pago={detalle} militante={m} onCerrar={() => setDetalle(null)} />
+        <DetallePago pago={detalle} militante={m} onCerrar={() => setDetalle(null)} onCambio={cargar} />
       )}
 
       {pagando && (
