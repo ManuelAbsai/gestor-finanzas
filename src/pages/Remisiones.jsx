@@ -12,11 +12,16 @@ import {
   listarRemisiones, crearRemision, marcarRemisionEnviada,
   periodoActual, generarPeriodos, periodoLegible,
 } from '../lib/remisiones.js'
-import { pagosDelPeriodo } from '../lib/pagos.js'
+import { pagosDelPeriodo, listarPagos } from '../lib/pagos.js'
 import { listarMilitantes } from '../lib/militantes.js'
 import { descargarComprobante } from '../lib/comprobante.js'
 
 const fmt = n => '$' + Number(n || 0).toLocaleString('es-MX')
+const RANGOS_CONCENTRADO = [
+  { label: '3 meses', valor: 3 },
+  { label: '6 meses', valor: 6 },
+  { label: '12 meses', valor: 12 },
+]
 
 export default function Remisiones() {
   const [remisiones, setRemisiones] = useState([])
@@ -28,6 +33,14 @@ export default function Remisiones() {
   const [toast, setToast]           = useState(null)
   const [historialAbierto, setHistorialAbierto] = useState(false)
   const yaAutoGenero = useRef(false)
+
+  // ── Concentrado mensual (matriz militante × mes) ──
+  const [concentradoAbierto, setConcentradoAbierto] = useState(false)
+  const [rangoConcentrado, setRangoConcentrado]     = useState(6)
+  const [mesFinConcentrado, setMesFinConcentrado]   = useState(periodoActual())
+  const [incluirBajas, setIncluirBajas]             = useState(false)
+  const [todosMilitantes, setTodosMilitantes]       = useState([]) // activos + inactivos
+  const [todosPagos, setTodosPagos]                 = useState([]) // historial completo
 
   async function cargar() {
     setCargando(true)
@@ -69,6 +82,22 @@ export default function Remisiones() {
   }, [])
 
   function mostrar(msg, tipo = 'ok') { setToast({ msg, tipo }); setTimeout(() => setToast(null), 2500) }
+
+  // Cargar los datos completos (todos los militantes + todo el historial
+  // de pagos) solo la primera vez que se abre el concentrado.
+  const yaCargoConcentrado = useRef(false)
+  useEffect(() => {
+    if (!concentradoAbierto || yaCargoConcentrado.current) return
+    yaCargoConcentrado.current = true
+    ;(async () => {
+      const [mil, pg] = await Promise.all([
+        listarMilitantes({ incluirInactivos: true }),
+        listarPagos(),
+      ])
+      setTodosMilitantes(mil)
+      setTodosPagos(pg)
+    })()
+  }, [concentradoAbierto])
 
   const totalCuotas = pagosPeriodo.reduce((s, p) => s + Number(p.monto || 0), 0)
   const yaRemitido = remisiones
@@ -114,6 +143,38 @@ export default function Remisiones() {
       }
     } catch (e) { mostrar('Error al generar PDF: ' + e.message, 'error') }
   }
+
+  // ── Cálculo del concentrado mensual ──
+  const periodosConcentrado = generarPeriodos(rangoConcentrado, mesFinConcentrado)
+
+  // Reparte el monto de cada pago entre los meses que cubre (por si un
+  // pago cubrió varios meses de un jalón), para que los totales por
+  // columna cuadren.
+  const montoPorMilitantePeriodo = {} // "militanteId|periodo" -> monto
+  todosPagos.forEach(p => {
+    const meses = p.meses_cubre || []
+    if (meses.length === 0) return
+    const porMes = Number(p.monto || 0) / meses.length
+    meses.forEach(mes => {
+      const clave = `${p.militante_id}|${mes}`
+      montoPorMilitantePeriodo[clave] = (montoPorMilitantePeriodo[clave] || 0) + porMes
+    })
+  })
+
+  const activosConcentrado = todosMilitantes.filter(m => m.activo !== false)
+  const bajasConActividad = incluirBajas
+    ? todosMilitantes.filter(m => m.activo === false && periodosConcentrado.some(
+        p => montoPorMilitantePeriodo[`${m.id}|${p}`] > 0
+      ))
+    : []
+  const filasConcentrado = [...activosConcentrado, ...bajasConActividad]
+
+  const totalesPorPeriodo = {}
+  periodosConcentrado.forEach(p => {
+    totalesPorPeriodo[p] = filasConcentrado.reduce(
+      (s, m) => s + (montoPorMilitantePeriodo[`${m.id}|${p}`] || 0), 0
+    )
+  })
 
   if (cargando) return <div className="cargando">Cargando remisiones…</div>
 
@@ -176,6 +237,99 @@ export default function Remisiones() {
                   ))}
                 </>
             }
+          </div>
+        )}
+      </div>
+
+      {/* Concentrado mensual (matriz militante × mes) */}
+      <div className="panel">
+        <div className="panel-cabecera" style={{ cursor: 'pointer' }} onClick={() => setConcentradoAbierto(v => !v)}>
+          <div className="panel-titulo">Concentrado mensual</div>
+          <span className="panel-accion">{concentradoAbierto ? '▲ ocultar' : '▼ ver tabla'}</span>
+        </div>
+        {concentradoAbierto && (
+          <div className="panel-cuerpo">
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+              {RANGOS_CONCENTRADO.map(r => (
+                <button
+                  key={r.valor}
+                  className={`btn-chico ${rangoConcentrado === r.valor ? 'primario' : ''}`}
+                  onClick={() => setRangoConcentrado(r.valor)}
+                >{r.label}</button>
+              ))}
+              <select value={mesFinConcentrado} onChange={e => setMesFinConcentrado(e.target.value)} style={{
+                background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 4,
+                padding: '5px 8px', color: 'var(--text)', fontFamily: 'var(--sans)', fontSize: 11,
+              }}>
+                {generarPeriodos(24, periodoActual()).map(p => (
+                  <option key={p} value={p}>hasta {periodoLegible(p)}</option>
+                ))}
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--muted)', marginLeft: 'auto' }}>
+                <input type="checkbox" checked={incluirBajas} onChange={e => setIncluirBajas(e.target.checked)} />
+                Incluir dados de baja
+              </label>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '1px solid var(--border)', position: 'sticky', left: 0, background: 'var(--surface)', minWidth: 130 }}>
+                      Militante
+                    </th>
+                    {periodosConcentrado.map(p => (
+                      <th key={p} style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                        {periodoLegible(p).split(' ')[0].slice(0, 3)} {periodoLegible(p).split(' ')[1].slice(2)}
+                      </th>
+                    ))}
+                    <th style={{ textAlign: 'right', padding: '6px 10px', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filasConcentrado.length === 0
+                    ? <tr><td colSpan={periodosConcentrado.length + 2} style={{ padding: '20px 10px', textAlign: 'center', color: 'var(--muted)' }}>Sin militantes que mostrar.</td></tr>
+                    : filasConcentrado.map(m => {
+                        const totalFila = periodosConcentrado.reduce(
+                          (s, p) => s + (montoPorMilitantePeriodo[`${m.id}|${p}`] || 0), 0
+                        )
+                        const esBaja = m.activo === false
+                        return (
+                          <tr key={m.id} style={{ opacity: esBaja ? 0.55 : 1 }}>
+                            <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--border)', position: 'sticky', left: 0, background: 'var(--surface)', whiteSpace: 'nowrap' }}>
+                              {m.nombre}{esBaja ? ' (baja)' : ''}
+                            </td>
+                            {periodosConcentrado.map(p => {
+                              const val = montoPorMilitantePeriodo[`${m.id}|${p}`]
+                              return (
+                                <td key={p} style={{ textAlign: 'right', padding: '6px 8px', borderBottom: '1px solid var(--border)', fontFamily: 'var(--mono)' }}>
+                                  {val ? fmt(Math.round(val)) : '—'}
+                                </td>
+                              )
+                            })}
+                            <td style={{ textAlign: 'right', padding: '6px 10px', borderBottom: '1px solid var(--border)', fontFamily: 'var(--mono)', fontWeight: 600 }}>
+                              {fmt(Math.round(totalFila))}
+                            </td>
+                          </tr>
+                        )
+                      })
+                  }
+                </tbody>
+                {filasConcentrado.length > 0 && (
+                  <tfoot>
+                    <tr>
+                      <td style={{ padding: '8px 10px', fontWeight: 600, position: 'sticky', left: 0, background: 'var(--surface)' }}>Total mes</td>
+                      {periodosConcentrado.map(p => (
+                        <td key={p} style={{ textAlign: 'right', padding: '8px', fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--green)' }}>
+                          {fmt(Math.round(totalesPorPeriodo[p] || 0))}
+                        </td>
+                      ))}
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
         )}
       </div>
