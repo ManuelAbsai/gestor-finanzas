@@ -139,11 +139,9 @@ export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerr
             </>
           )}
 
-          {estado !== 'pagado' && (
-            <button className="btn-principal" onClick={() => setPagando(true)}>
-              Registrar pago
-            </button>
-          )}
+          <button className="btn-principal" onClick={() => setPagando(true)}>
+            {estado === 'pagado' ? '+ Registrar otro pago (adelantar meses)' : 'Registrar pago'}
+          </button>
         </div>
       </div>
 
