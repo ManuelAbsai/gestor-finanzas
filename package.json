@@ -1,8 +1,8 @@
 {
   "name": "gestor-finanzas",
-  "version": "1.0.0",
+  "version": "2.2.0",
   "private": true,
-  "description": "Gestor de finanzas para responsables de cuotas y remisiones. Cada usuario conecta su propia base de datos Supabase.",
+  "description": "PCR · app del encargado político: reuniones, actas, órdenes del día, aspirantes, actividades e informe mensual. Cada usuario conecta su propia base de datos Supabase.",
   "type": "module",
   "scripts": {
     "dev": "vite",

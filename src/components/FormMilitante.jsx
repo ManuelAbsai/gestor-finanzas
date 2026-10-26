@@ -6,13 +6,13 @@
  */
 
 import { useState } from 'react'
-import { CONDICIONES, subirFotoPerfil, eliminarMilitante } from '../lib/militantes.js'
+import { CONDICIONES, CATEGORIAS_SOCIALES, subirFotoPerfil, eliminarMilitante } from '../lib/militantes.js'
 import { crearActividad } from '../lib/catalogos.js'
 import { PALETA, hexToRgba, iniciales } from '../lib/colores.js'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
 
-export default function FormMilitante({ militante, gruposBase, etiquetas, actividades, fotoUrlInicial, onGuardar, onCerrar, onCatalogosCambio, onEliminado }) {
+export default function FormMilitante({ militante, padron = [], gruposBase, etiquetas, actividades, fotoUrlInicial, onGuardar, onCerrar, onCatalogosCambio, onEliminado }) {
   const esEdicion = !!militante.id
 
   const [f, setF] = useState({
@@ -24,6 +24,9 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
     condicion:        militante.condicion || 'militante_trabajador',
     grupo_base_id:    militante.grupo_base_id || (gruposBase[0]?.id || ''),
     actividad_id:     militante.actividad_id || '',
+    categoria:        militante.categoria || '',
+    responsable_id:   militante.responsable_id || '',
+    folio:            militante.folio || '',
     color_individual: militante.color_individual || '#5B8DD9',
     cuota_monto:      militante.cuota_monto || '',
     cuota_dia:        militante.cuota_dia || '',
@@ -37,8 +40,10 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
   const [previewFoto, setPreviewFoto] = useState(fotoUrlInicial || null)
   const [fotoQuitada, setFotoQuitada] = useState(false)
   const [nuevaActividad, setNuevaActividad] = useState('')
-  const [menuAbierto, setMenuAbierto] = useState(false)
+  const [avanzadas, setAvanzadas]     = useState(false)
+  const [confirmaNombre, setConfirmaNombre] = useState('')
   const [eliminando, setEliminando]   = useState(false)
+  const [verFinanzas, setVerFinanzas] = useState(false)
 
   function set(campo, valor) { setF(prev => ({ ...prev, [campo]: valor })) }
 
@@ -91,6 +96,8 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
         cuota_dia: Number(f.cuota_dia) || 1,
         grupo_base_id: f.grupo_base_id || null,
         actividad_id: f.actividad_id || null,
+        responsable_id: f.responsable_id || null,
+        folio: f.folio.trim(),
         foto_path,
         etiquetas: etiqSel,
       }
@@ -101,14 +108,10 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
   }
 
   async function confirmarEliminar() {
-    const numPagos = militante._numPagos ?? 0
-    const advertencia = numPagos > 0
-      ? `⚠ ${militante.nombre} tiene ${numPagos} pago(s) registrado(s). Eliminarlo es PERMANENTE y borra también su historial.\n\n¿Seguro? Si solo quieres ocultarlo, usa "Dar de baja" en su lugar (dentro de la ficha).`
-      : `¿Eliminar a ${militante.nombre} de forma permanente? No se puede deshacer.`
-    if (!confirm(advertencia)) return
+    if (confirmaNombre.trim() !== militante.nombre.trim()) return
     setEliminando(true)
     try {
-      await eliminarMilitante(militante.id)
+      await eliminarMilitante(militante.id, militante.foto_path)
       onEliminado?.(militante.id)
     } catch (e) {
       alert('No se pudo eliminar: ' + e.message)
@@ -121,21 +124,7 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
       <div className="modal-hoja" onClick={e => e.stopPropagation()}>
         <div className="modal-cabecera">
           <div className="modal-titulo">{esEdicion ? `Editar — ${militante.nombre}` : 'Nuevo alta'}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {esEdicion && (
-              <div style={{ position: 'relative' }}>
-                <button className="menu-punto" onClick={() => setMenuAbierto(v => !v)} title="Más opciones">⋮</button>
-                {menuAbierto && (
-                  <div className="menu-desplegable" onMouseLeave={() => setMenuAbierto(false)}>
-                    <button className="menu-item peligro" onClick={confirmarEliminar} disabled={eliminando}>
-                      🗑 {eliminando ? 'Eliminando…' : 'Eliminar permanentemente'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            <button className="cerrar" onClick={onCerrar}>✕</button>
-          </div>
+          <button className="cerrar" onClick={onCerrar}>✕</button>
         </div>
 
         <div className="modal-cuerpo">
@@ -158,14 +147,14 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
               </div>
               <div style={{ flex: 1 }}>
                 <button type="button" className="btn-chico" onClick={() => document.getElementById('input-foto-perfil').click()}>
-                  Subir foto
+                  📷 Tomar o elegir foto
                 </button>
                 {previewFoto && (
                   <button type="button" onClick={quitarFoto} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 11, cursor: 'pointer', marginLeft: 8 }}>
                     Quitar
                   </button>
                 )}
-                <div className="nota-inline">Si no subes foto, se usan las iniciales con color.</div>
+                <div className="nota-inline">Se reduce sola antes de subirse. Si no hay foto, se usan las iniciales con color.</div>
               </div>
             </div>
             <input id="input-foto-perfil" type="file" accept="image/*" style={{ display: 'none' }} onChange={onArchivo} />
@@ -215,6 +204,30 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
             }
           </div>
 
+          <div className="campo">
+            <label>Categoría</label>
+            <div className="chips">
+              {CATEGORIAS_SOCIALES.map(c => (
+                <button type="button" key={c.id} className={`chip ${f.categoria === c.id ? 'sel' : ''}`}
+                        onClick={() => set('categoria', f.categoria === c.id ? '' : c.id)}>{c.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="campo-fila">
+            <div className="campo">
+              <label>Responsable de seguimiento</label>
+              <select value={f.responsable_id} onChange={e => set('responsable_id', e.target.value)}>
+                <option value="">— Nadie —</option>
+                {padron.filter(p => p.id !== militante.id).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            </div>
+            <div className="campo">
+              <label>Folio militante</label>
+              <input type="text" value={f.folio} inputMode="numeric" placeholder="Lo asigna el partido" onChange={e => set('folio', e.target.value)} />
+            </div>
+          </div>
+
           {/* Color individual */}
           <div className="campo">
             <label>Color de identificación *</label>
@@ -240,17 +253,6 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
             </div>
           </div>
 
-          <div className="campo-fila">
-            <div className="campo">
-              <label>Cuota mensual ($) *</label>
-              <input type="number" value={f.cuota_monto} onChange={e => set('cuota_monto', e.target.value)} placeholder="350" />
-            </div>
-            <div className="campo">
-              <label>Día de pago *</label>
-              <input type="number" min="1" max="31" value={f.cuota_dia} onChange={e => set('cuota_dia', e.target.value)} placeholder="15" />
-            </div>
-          </div>
-
           <div className="campo">
             <label>Fecha de alta *</label>
             <input type="date" value={f.fecha_alta} onChange={e => set('fecha_alta', e.target.value)} />
@@ -263,9 +265,9 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
 
           {/* Actividad (catálogo administrable) */}
           <div className="campo">
-            <label>Actividad / cargo</label>
+            <label>Papel en el GB (responsabilidad)</label>
             {actividades.length === 0
-              ? <div className="aviso-inline">Aún no hay actividades. Crea la primera abajo.</div>
+              ? <div className="aviso-inline">Aún no hay responsabilidades. Crea la primera abajo.</div>
               : <select value={f.actividad_id} onChange={e => set('actividad_id', e.target.value)}>
                   <option value="">— Sin especificar —</option>
                   {actividades.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
@@ -273,7 +275,7 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
             }
             <div className="crear-inline" style={{ marginTop: 8 }}>
               <input
-                type="text" placeholder="Nueva actividad (ej. Finanzas, Propaganda…)"
+                type="text" placeholder="Otra responsabilidad (ej. Propaganda)"
                 value={nuevaActividad} maxLength={40}
                 onChange={e => setNuevaActividad(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarActividadInline())}
@@ -314,9 +316,48 @@ export default function FormMilitante({ militante, gruposBase, etiquetas, activi
             <textarea value={f.notas} onChange={e => set('notas', e.target.value)} />
           </div>
 
+          {/* Datos de finanzas: ya no se usan, pero se conservan */}
+          <button type="button" className="plegable" onClick={() => setVerFinanzas(v => !v)}>
+            <span>Datos de finanzas (archivo)</span><span>{verFinanzas ? '▲' : '▼'}</span>
+          </button>
+          {verFinanzas && (
+            <div className="campo-fila">
+              <div className="campo">
+                <label>Cuota mensual ($)</label>
+                <input type="number" value={f.cuota_monto} onChange={e => set('cuota_monto', e.target.value)} placeholder="0" />
+              </div>
+              <div className="campo">
+                <label>Día de pago</label>
+                <input type="number" min="1" max="31" value={f.cuota_dia} onChange={e => set('cuota_dia', e.target.value)} placeholder="1" />
+              </div>
+            </div>
+          )}
+
           <button className="btn-principal" onClick={guardar} disabled={guardando || !f.nombre.trim()}>
             {guardando ? 'Guardando…' : (esEdicion ? 'Guardar cambios' : 'Registrar alta')}
           </button>
+
+          {/* Eliminar: escondido a propósito para evitar accidentes */}
+          {esEdicion && (
+            <div className="zona-avanzada">
+              <button type="button" className="plegable sutil" onClick={() => setAvanzadas(v => !v)}>
+                <span>Opciones avanzadas</span><span>{avanzadas ? '▲' : '▼'}</span>
+              </button>
+              {avanzadas && (
+                <div className="zona-peligro">
+                  <p>Eliminar borra a <b>{militante.nombre}</b> y todo su historial de forma <b>permanente</b>. Si solo dejó de participar, mejor usa <b>Dar de baja</b> desde su ficha: se conserva todo y se puede reactivar.</p>
+                  <div className="campo">
+                    <label>Escribe su nombre completo para confirmar</label>
+                    <input type="text" value={confirmaNombre} placeholder={militante.nombre} onChange={e => setConfirmaNombre(e.target.value)} />
+                  </div>
+                  <button type="button" className="btn-peligro" onClick={confirmarEliminar}
+                          disabled={eliminando || confirmaNombre.trim() !== militante.nombre.trim()}>
+                    🗑 {eliminando ? 'Eliminando…' : 'Eliminar definitivamente'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

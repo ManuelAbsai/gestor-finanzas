@@ -23,7 +23,7 @@ const RANGOS = [
   { label: '1 año', valor: 12 },
 ]
 
-export default function Dashboard({ onIrAMilitantes }) {
+export default function Dashboard({ onIrAMilitantes, embebido = false }) {
   const [militantes, setMilitantes] = useState([])
   const [pagos, setPagos]           = useState([])
   const [cargando, setCargando]     = useState(true)
@@ -79,7 +79,7 @@ export default function Dashboard({ onIrAMilitantes }) {
 
   return (
     <div>
-      <div className="topbar"><div className="topbar-titulo">Inicio</div></div>
+      {!embebido && <div className="topbar"><div className="topbar-titulo">Inicio</div></div>}
 
       {/* KPIs */}
       <div className="kpi-grid">

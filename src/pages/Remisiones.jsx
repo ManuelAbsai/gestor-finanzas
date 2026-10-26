@@ -23,7 +23,7 @@ const RANGOS_CONCENTRADO = [
   { label: '12 meses', valor: 12 },
 ]
 
-export default function Remisiones() {
+export default function Remisiones({ embebido = false }) {
   const [remisiones, setRemisiones] = useState([])
   const [militantes, setMilitantes] = useState([])
   const [periodo, setPeriodo]       = useState(periodoActual())
@@ -180,8 +180,8 @@ export default function Remisiones() {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="topbar-titulo">Remisiones</div>
+      <div className={embebido ? 'barra-filtros' : 'topbar'}>
+        <div className={embebido ? 'filtro-etiqueta' : 'topbar-titulo'}>{embebido ? 'Mes:' : 'Remisiones'}</div>
         <input type="month" className="selector-mes" value={periodo}
                onChange={e => setPeriodo(e.target.value)} />
       </div>

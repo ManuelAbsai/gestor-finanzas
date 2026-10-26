@@ -106,13 +106,34 @@ export async function verificarConexion(url, anonKey) {
  * Se usa después de conectar, para detectar instalaciones incompletas.
  */
 export async function verificarTablas() {
-  const tablas = ['grupos_base', 'etiquetas', 'militantes', 'pagos', 'remisiones', 'eventos']
+  const tablas = [
+    'grupos_base', 'etiquetas', 'militantes', 'pagos', 'remisiones', 'eventos',
+    // Agregadas en la versión PCR (archivo actualizacion_pcr.sql)
+    'materiales', 'reuniones', 'puntos_reunion', 'acuerdos', 'plantilla_puntos',
+    'aspirantes', 'contactos_aspirante', 'tipos_actividad', 'registro_actividades',
+  ]
   const faltantes = []
 
-  for (const tabla of tablas) {
-    const { error } = await supabase().from(tabla).select('id').limit(1)
-    if (error && (error.code === '42P01' || /does not exist/i.test(error.message))) {
+  await Promise.all(tablas.map(async tabla => {
+    const { error } = await supabase().from(tabla).select('*').limit(1)
+    if (error && (error.code === '42P01' || error.code === 'PGRST205' || /does not exist|could not find the table/i.test(error.message))) {
       faltantes.push(tabla)
+    }
+  }))
+
+  // Columnas agregadas en versiones posteriores (v2.1)
+  if (!faltantes.includes('aspirantes')) {
+    const { error } = await supabase().from('aspirantes').select('canal, referido_por, motivo_descarte, descartado_en').limit(1)
+    if (error && (error.code === '42703' || /column .* does not exist/i.test(error.message))) {
+      faltantes.push('columnas nuevas de aspirantes')
+    }
+  }
+
+  // v2.2
+  if (!faltantes.includes('militantes')) {
+    const { error } = await supabase().from('militantes').select('categoria, responsable_id, folio').limit(1)
+    if (error && (error.code === '42703' || /column .* does not exist/i.test(error.message))) {
+      faltantes.push('columnas nuevas de militantes')
     }
   }
 

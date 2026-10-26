@@ -10,6 +10,7 @@
  */
 
 import { supabase } from './supabase.js'
+import { comprimirFoto } from './archivos.js'
 
 // ── Constantes de condición (fijas, no configurables) ────────
 export const CONDICIONES = [
@@ -20,6 +21,19 @@ export const CONDICIONES = [
 
 export function labelCondicion(id) {
   return CONDICIONES.find(c => c.id === id)?.label || id
+}
+
+// ── Categoría (la que pide la hoja de Crecimiento Regional) ──
+export const CATEGORIAS_SOCIALES = [
+  { id: 'media_superior', label: 'Media superior', color: '#5B8DD9' },
+  { id: 'universitario',  label: 'Universitario',  color: '#9B59B6' },
+  { id: 'trabajador',     label: 'Trabajador',     color: '#E08A3C' },
+  { id: 'desempleado',    label: 'Desempleado',    color: '#7A7670' },
+  { id: 'retirado',       label: 'Retirado',       color: '#2E9E5B' },
+]
+
+export function labelCategoria(id) {
+  return CATEGORIAS_SOCIALES.find(c => c.id === id)?.label || ''
 }
 
 // ═══ LECTURA ═════════════════════════════════════════════════
@@ -45,8 +59,10 @@ export async function listarMilitantes({ incluirInactivos = false } = {}) {
   if (error) throw error
 
   // Aplanar: etiquetas como arreglo de ids
+  const nombres = Object.fromEntries(data.map(m => [m.id, m.nombre]))
   return data.map(m => ({
     ...m,
+    responsable_nombre: nombres[m.responsable_id] || '',
     grupo_base_nombre: m.grupo_base?.nombre || '',
     actividad_nombre: m.actividad?.nombre || '',
     etiquetas: (m.militante_etiquetas || []).map(r => r.etiqueta_id),
@@ -66,8 +82,14 @@ export async function obtenerMilitante(id) {
     .single()
 
   if (error) throw error
+  let responsable_nombre = ''
+  if (data.responsable_id) {
+    const r = await supabase().from('militantes').select('nombre').eq('id', data.responsable_id).maybeSingle()
+    responsable_nombre = r.data?.nombre || ''
+  }
   return {
     ...data,
+    responsable_nombre,
     grupo_base_nombre: data.grupo_base?.nombre || '',
     actividad_nombre: data.actividad?.nombre || '',
     etiquetas: (data.militante_etiquetas || []).map(r => r.etiqueta_id),
@@ -149,12 +171,16 @@ export async function reactivarMilitante(id) {
  * No se puede deshacer — úsala solo desde el menú de edición,
  * con confirmación explícita del usuario.
  */
-export async function eliminarMilitante(id) {
+export async function eliminarMilitante(id, foto_path = '') {
   const { error } = await supabase()
     .from('militantes')
     .delete()
     .eq('id', id)
   if (error) throw error
+  // Borrar también su foto (si falla, no pasa nada)
+  if (foto_path) {
+    try { await supabase().storage.from('avatares').remove([foto_path]) } catch { /* sin efecto */ }
+  }
 }
 
 /**
@@ -162,6 +188,8 @@ export async function eliminarMilitante(id) {
  * devuelve la ruta guardada (para el campo foto_path).
  */
 export async function subirFotoPerfil(archivo, militanteId) {
+  // Se reduce antes de subir (una foto de 4 MB queda en ~40 KB)
+  try { archivo = await comprimirFoto(archivo) } catch { /* si no se puede, se sube tal cual */ }
   const ext = archivo.name.split('.').pop() || 'jpg'
   const ruta = `${militanteId}/${Date.now()}.${ext}`
   const { error } = await supabase()

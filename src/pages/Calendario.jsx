@@ -1,70 +1,73 @@
 /**
  * Calendario.jsx
  * ───────────────────────────────────────────────────────────────
- * Vista mensual: muestra vencimientos de cuota, pagos recibidos y
- * eventos manuales. Al tocar un día se ven sus eventos y se puede
- * agregar un evento manual.
+ * Vista mensual: reuniones (GB y otras), llamadas programadas a
+ * aspirantes, actividades realizadas y recordatorios manuales.
+ * Al tocar un día se ve lo que hay y se puede programar una
+ * reunión o agregar un recordatorio.
  */
 
 import { useState, useEffect } from 'react'
-import { listarMilitantes } from '../lib/militantes.js'
-import { listarPagos } from '../lib/pagos.js'
+import { listarReuniones, estadoReunion, ESTADO_REUNION_META } from '../lib/reuniones.js'
+import { listarAspirantes } from '../lib/aspirantes.js'
+import { listarActividadesGB } from '../lib/actividadesGB.js'
 import { listarEventos, crearEvento, eliminarEvento } from '../lib/remisiones.js'
+import { MESES, aISO, horaTexto } from '../lib/fechas.js'
 
 const DIAS = ['D','L','M','M','J','V','S']
-const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const COLOR = { gb: '#B22222', otra: '#5B8DD9', llamada: '#C17D2A', actividad: '#3DAF7D', evento: '#9B59B6' }
 
-export default function Calendario() {
-  const [ref, setRef]             = useState(new Date())
-  const [militantes, setMilitantes] = useState([])
-  const [pagos, setPagos]         = useState([])
-  const [eventos, setEventos]     = useState([])
-  const [cargando, setCargando]   = useState(true)
-  const [diaSel, setDiaSel]       = useState(null)
+export default function Calendario({ ir }) {
+  const [ref, setRef] = useState(new Date())
+  const [reuniones, setReuniones] = useState([])
+  const [aspirantes, setAspirantes] = useState([])
+  const [actividades, setActividades] = useState([])
+  const [eventos, setEventos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
+  const [diaSel, setDiaSel] = useState(null)
   const [nuevoEvento, setNuevoEvento] = useState('')
 
   async function cargar() {
-    setCargando(true)
+    setError(null)
     try {
-      const [m, p, ev] = await Promise.all([listarMilitantes(), listarPagos(), listarEventos()])
-      setMilitantes(m); setPagos(p); setEventos(ev)
-    } finally { setCargando(false) }
+      const [r, a, ac, ev] = await Promise.all([listarReuniones(), listarAspirantes(), listarActividadesGB(), listarEventos()])
+      setReuniones(r); setAspirantes(a); setActividades(ac); setEventos(ev)
+    } catch (e) { setError(e.message) }
+    finally { setCargando(false) }
   }
   useEffect(() => { cargar() }, [])
 
   const anio = ref.getFullYear()
   const mes = ref.getMonth()
-  const periodo = `${anio}-${String(mes + 1).padStart(2, '0')}`
   const primerDia = new Date(anio, mes, 1).getDay()
   const diasEnMes = new Date(anio, mes + 1, 0).getDate()
-  const hoy = new Date()
+  const hoy = aISO(new Date())
+  const fechaDe = dia => aISO(new Date(anio, mes, dia))
 
-  // Marcas por día
-  function marcasDelDia(dia) {
-    const marcas = []
-    // Vencimientos de cuota (día de pago de cada militante)
-    militantes.forEach(m => {
-      if (parseInt(m.cuota_dia, 10) === dia) marcas.push('cuota')
-    })
-    // Pagos recibidos ese día
-    const fechaStr = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
-    if (pagos.some(p => p.fecha_pago === fechaStr)) marcas.push('pago')
-    // Eventos manuales
-    if (eventos.some(e => e.fecha === fechaStr)) marcas.push('evento')
-    return marcas
+  function delDia(f) {
+    return {
+      reuniones: reuniones.filter(r => r.fecha === f),
+      llamadas: aspirantes.filter(a => a.proxima_accion === f && (a.estado === 'contactado' || a.estado === 'en_seguimiento')),
+      actividades: actividades.filter(a => a.fecha === f),
+      eventos: eventos.filter(e => e.fecha === f),
+    }
   }
 
-  const COLOR_MARCA = { cuota: '#B22222', pago: '#3DAF7D', evento: '#9B59B6' }
-
-  function fechaDelDia(dia) {
-    return `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+  function marcas(f) {
+    const d = delDia(f)
+    return [
+      ...d.reuniones.map(r => r.ambito === 'GB' ? COLOR.gb : COLOR.otra),
+      ...d.llamadas.map(() => COLOR.llamada),
+      ...d.actividades.map(() => COLOR.actividad),
+      ...d.eventos.map(() => COLOR.evento),
+    ].slice(0, 5)
   }
 
   async function agregarEvento() {
     if (!nuevoEvento.trim() || !diaSel) return
     try {
-      await crearEvento({ fecha: fechaDelDia(diaSel), titulo: nuevoEvento.trim(), tipo: 'recordatorio' })
+      await crearEvento({ fecha: fechaDe(diaSel), titulo: nuevoEvento.trim(), tipo: 'recordatorio' })
       setNuevoEvento('')
       await cargar()
     } catch (e) { alert('Error: ' + e.message) }
@@ -74,49 +77,44 @@ export default function Calendario() {
     try { await eliminarEvento(id); await cargar() } catch (e) { alert('Error: ' + e.message) }
   }
 
-  function cambiarMes(delta) {
-    setRef(new Date(anio, mes + delta, 1))
-    setDiaSel(null)
-  }
+  function cambiarMes(delta) { setRef(new Date(anio, mes + delta, 1)); setDiaSel(null) }
 
   if (cargando) return <div className="cargando">Cargando calendario…</div>
+  if (error) return <div className="estado-error"><p>No se pudo cargar el calendario.</p><p className="estado-error-detalle">{error}</p><button className="btn-secundario" onClick={cargar}>Reintentar</button></div>
 
-  // Datos del día seleccionado
-  const fechaSel = diaSel ? fechaDelDia(diaSel) : null
-  const eventosDia = fechaSel ? eventos.filter(e => e.fecha === fechaSel) : []
-  const pagosDia = fechaSel ? pagos.filter(p => p.fecha_pago === fechaSel) : []
-  const cuotasDia = fechaSel ? militantes.filter(m => parseInt(m.cuota_dia, 10) === diaSel) : []
+  const fSel = diaSel ? fechaDe(diaSel) : null
+  const d = fSel ? delDia(fSel) : null
+  const nombreMes = MESES[mes][0].toUpperCase() + MESES[mes].slice(1)
 
   return (
     <div>
-      <div className="topbar"><div className="topbar-titulo">Calendario</div></div>
+      <div className="topbar">
+        <div className="topbar-titulo">Calendario</div>
+        <button className="btn-chico primario" onClick={() => ir('reuniones', { nueva: true, fecha: fSel })}>+ Programar reunión</button>
+      </div>
 
       <div className="cal-cont">
         <div className="cal-nav">
           <button onClick={() => cambiarMes(-1)}>‹</button>
-          <span>{MESES[mes]} {anio}</span>
+          <span>{nombreMes} {anio}</span>
           <button onClick={() => cambiarMes(1)}>›</button>
         </div>
 
         <div className="cal-dias-semana">
-          {DIAS.map((d, i) => <div key={i} className="cal-dia-semana">{d}</div>)}
+          {DIAS.map((x, i) => <div key={i} className="cal-dia-semana">{x}</div>)}
         </div>
 
         <div className="cal-grid">
           {Array.from({ length: primerDia }).map((_, i) => <div key={'v' + i} className="cal-celda vacia" />)}
           {Array.from({ length: diasEnMes }).map((_, i) => {
             const dia = i + 1
-            const marcas = marcasDelDia(dia)
-            const esHoy = hoy.getDate() === dia && hoy.getMonth() === mes && hoy.getFullYear() === anio
+            const f = fechaDe(dia)
             const sel = diaSel === dia
             return (
-              <div key={dia} className={`cal-celda ${esHoy ? 'hoy' : ''} ${sel ? 'sel' : ''}`}
-                   onClick={() => setDiaSel(sel ? null : dia)}>
+              <div key={dia} className={`cal-celda ${f === hoy ? 'hoy' : ''} ${sel ? 'sel' : ''}`} onClick={() => setDiaSel(sel ? null : dia)}>
                 <span className="cal-num">{dia}</span>
                 <div className="cal-puntos">
-                  {marcas.map((mk, j) => (
-                    <span key={j} className="cal-punto" style={{ background: COLOR_MARCA[mk] }} />
-                  ))}
+                  {marcas(f).map((c, j) => <span key={j} className="cal-punto" style={{ background: c }} />)}
                 </div>
               </div>
             )
@@ -124,35 +122,50 @@ export default function Calendario() {
         </div>
 
         <div className="cal-leyenda">
-          <span><i style={{ background: '#B22222' }} /> Vencimiento de cuota</span>
-          <span><i style={{ background: '#3DAF7D' }} /> Pago recibido</span>
-          <span><i style={{ background: '#9B59B6' }} /> Evento</span>
+          <span><i style={{ background: COLOR.gb }} /> Reunión GB</span>
+          <span><i style={{ background: COLOR.otra }} /> Otra reunión</span>
+          <span><i style={{ background: COLOR.llamada }} /> Llamada a aspirante</span>
+          <span><i style={{ background: COLOR.actividad }} /> Actividad</span>
+          <span><i style={{ background: COLOR.evento }} /> Recordatorio</span>
         </div>
       </div>
 
-      {/* Panel del día */}
       {diaSel && (
         <div className="cal-dia-panel">
           <div className="cal-dia-titulo">{diaSel} de {MESES[mes]}</div>
 
-          {cuotasDia.length > 0 && (
+          {d.reuniones.length > 0 && (
             <div className="cal-dia-grupo">
-              <div className="cal-dia-label">Vencen cuota</div>
-              {cuotasDia.map(m => <div key={m.id} className="cal-dia-item">· {m.nombre} (${m.cuota_monto})</div>)}
+              <div className="cal-dia-label">Reuniones</div>
+              {d.reuniones.map(r => (
+                <div key={r.id} className="cal-dia-item clic" onClick={() => ir('reuniones', { id: r.id })}>
+                  · {r.ambito} {horaTexto(r.hora)} — {r.discusion_tema || 'sin tema'}{' '}
+                  <span className={`badge ${ESTADO_REUNION_META[estadoReunion(r)].clase}`}>{ESTADO_REUNION_META[estadoReunion(r)].label}</span>
+                </div>
+              ))}
             </div>
           )}
 
-          {pagosDia.length > 0 && (
+          {d.llamadas.length > 0 && (
             <div className="cal-dia-grupo">
-              <div className="cal-dia-label">Pagos recibidos</div>
-              {pagosDia.map(p => <div key={p.id} className="cal-dia-item">· ${p.monto} — {p.periodo_texto}</div>)}
+              <div className="cal-dia-label">Llamar a</div>
+              {d.llamadas.map(a => (
+                <div key={a.id} className="cal-dia-item clic" onClick={() => ir('aspirantes', a.id)}>· {a.nombre} {a.telefono ? `(${a.telefono})` : ''}</div>
+              ))}
             </div>
           )}
 
-          {eventosDia.length > 0 && (
+          {d.actividades.length > 0 && (
             <div className="cal-dia-grupo">
-              <div className="cal-dia-label">Eventos</div>
-              {eventosDia.map(e => (
+              <div className="cal-dia-label">Actividades</div>
+              {d.actividades.map(a => <div key={a.id} className="cal-dia-item">· {a.titulo}</div>)}
+            </div>
+          )}
+
+          {d.eventos.length > 0 && (
+            <div className="cal-dia-grupo">
+              <div className="cal-dia-label">Recordatorios</div>
+              {d.eventos.map(e => (
                 <div key={e.id} className="cal-dia-item con-borrar">
                   · {e.titulo}
                   <button onClick={() => borrarEvento(e.id)}>✕</button>
@@ -161,11 +174,16 @@ export default function Calendario() {
             </div>
           )}
 
+          <button className="btn-chico primario" style={{ width: '100%', marginBottom: 10 }}
+                  onClick={() => ir('reuniones', { nueva: true, fecha: fSel })}>
+            + Programar reunión este día
+          </button>
+
           <div className="cal-agregar">
-            <input type="text" placeholder="Agregar evento o recordatorio…" value={nuevoEvento}
+            <input type="text" placeholder="Agregar recordatorio…" value={nuevoEvento}
                    onChange={e => setNuevoEvento(e.target.value)}
                    onKeyDown={e => e.key === 'Enter' && agregarEvento()} />
-            <button className="btn-chico primario" onClick={agregarEvento}>Agregar</button>
+            <button className="btn-chico" onClick={agregarEvento}>Agregar</button>
           </div>
         </div>
       )}

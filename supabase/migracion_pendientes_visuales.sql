@@ -18,8 +18,9 @@ create table if not exists actividades (
   creado_en  timestamptz not null default now()
 );
 
+alter table militantes drop constraint if exists fk_militantes_actividad;
 alter table militantes
-  add constraint if not exists fk_militantes_actividad
+  add constraint fk_militantes_actividad
   foreign key (actividad_id) references actividades(id) on delete set null;
 
 -- ── Bucket de Storage para fotos de perfil ────────────────────

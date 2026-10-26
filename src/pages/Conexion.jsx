@@ -59,11 +59,10 @@ export default function Conexion({ onConectado }) {
     return (
       <div className="conexion-screen">
         <div className="conexion-card">
-          <div className="conexion-logo">◈</div>
-          <h1 className="conexion-titulo">Gestor de Finanzas</h1>
+          <img src={`${import.meta.env.BASE_URL}logos/pcr-completo-blanco.png`} alt="PCR — Partido Comunista Revolucionario" className="conexion-logo-img" />
           <p className="conexion-sub">
-            Cuotas, pagos, evidencias y remisiones — todo en un solo lugar,
-            en tu propia base de datos.
+            Reuniones, actas, órdenes del día, aspirantes y actividades del
+            grupo base — en tu propia base de datos.
           </p>
 
           <div className="conexion-info">
@@ -107,7 +106,7 @@ export default function Conexion({ onConectado }) {
             </div>
             <div className="conexion-paso">
               <span className="paso-num">3</span>
-              <span>Copia el contenido del archivo <strong>setup.sql</strong> (viene con la app), pégalo y presiona <strong>Run</strong></span>
+              <span>Copia el contenido del archivo <strong>setup.sql</strong> (viene con la app), pégalo y presiona <strong>Run</strong>. Después haz lo mismo con <strong>actualizacion_pcr.sql</strong></span>
             </div>
             <div className="conexion-paso">
               <span className="paso-num">4</span>
@@ -131,7 +130,7 @@ export default function Conexion({ onConectado }) {
   return (
     <div className="conexion-screen">
       <div className="conexion-card">
-        <div className="conexion-logo">◈</div>
+        <img src={`${import.meta.env.BASE_URL}logos/emblema-rojo.png`} alt="" className="conexion-emblema" />
         <h1 className="conexion-titulo">Conecta tu base de datos</h1>
         <p className="conexion-sub">
           Estos datos están en tu panel de Supabase, en

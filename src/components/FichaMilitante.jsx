@@ -1,24 +1,23 @@
 /**
  * FichaMilitante.jsx
  * ───────────────────────────────────────────────────────────────
- * Perfil completo de un militante: datos, historial de pagos y
- * botón para editar. El registro de pago se abre desde aquí.
+ * Perfil completo de un militante: datos de contacto y militancia,
+ * botón para editar y para dar de baja. Su historial de pagos
+ * (de cuando se llevaban finanzas) queda plegado como archivo.
  */
 
 import { useState, useEffect } from 'react'
-import { obtenerMilitante, labelCondicion } from '../lib/militantes.js'
-import { listarPagos, periodoActual } from '../lib/pagos.js'
-import { estadoCuota, ESTADO_META } from '../lib/remisiones.js'
+import { obtenerMilitante, labelCondicion, labelCategoria } from '../lib/militantes.js'
+import { listarPagos } from '../lib/pagos.js'
 import { hexToRgba, iniciales } from '../lib/colores.js'
 import DetallePago from './DetallePago.jsx'
-import FormPago from './FormPago.jsx'
 
-export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerrar, onEditar, onCambio }) {
+export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerrar, onEditar, onCambio, onBaja }) {
   const [m, setM]           = useState(null)
   const [pagos, setPagos]   = useState([])
   const [cargando, setCargando] = useState(true)
   const [detalle, setDetalle]   = useState(null)  // pago a ver
-  const [pagando, setPagando]   = useState(false) // registrar pago
+  const [verPagos, setVerPagos] = useState(false) // archivo de finanzas
 
   async function cargar() {
     setCargando(true)
@@ -46,10 +45,6 @@ export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerr
     )
   }
 
-  const periodo = periodoActual()
-  const pagadoEsteMes = pagos.some(p => (p.meses_cubre || []).includes(periodo))
-  const estado = estadoCuota(m, pagadoEsteMes)
-  const em = ESTADO_META[estado]
   const color = m.color_individual || '#5B8DD9'
 
   function fila(label, valor) {
@@ -81,7 +76,9 @@ export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerr
           }
           <div className="ficha-nombre">{m.nombre}</div>
           <div className="ficha-chips">
+            {m.activo === false && <span className="badge rojo">Dado de baja</span>}
             <span className="mini-etiqueta cond">{labelCondicion(m.condicion)}</span>
+            {m.categoria && <span className="mini-etiqueta cond">{labelCategoria(m.categoria)}</span>}
             {(m.etiquetas || []).map(eid => {
               const et = etiquetas.find(x => x.id === eid)
               if (!et) return null
@@ -101,24 +98,32 @@ export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerr
           {fila('Correo', m.correo)}
 
           <div className="ficha-seccion-titulo">Militancia</div>
+          {fila('Folio', m.folio)}
           {fila('Grupo base', m.grupo_base_nombre)}
+          {fila('Papel en el GB', m.actividad_nombre)}
+          {fila('Categoría', labelCategoria(m.categoria))}
+          {fila('Responsable de seguimiento', m.responsable_nombre)}
           {fila('Ciudad', m.ciudad)}
           {fila('Estado', m.estado)}
           {fila('Fecha de alta', m.fecha_alta)}
           {fila('Referencia', m.referencia)}
-          {fila('Actividad', m.actividad_nombre)}
 
-          <div className="ficha-seccion-titulo">Cuota</div>
-          <div className="ficha-cuota">
-            <div>
-              <div className="ficha-cuota-monto">${m.cuota_monto}</div>
-              <div className="ficha-cuota-dia">Día {m.cuota_dia} de cada mes</div>
-            </div>
-            <span className={`badge ${em.clase}`}>{em.label}</span>
-          </div>
+          {m.notas && (
+            <>
+              <div className="ficha-seccion-titulo">Notas</div>
+              <div className="ficha-notas">{m.notas}</div>
+            </>
+          )}
 
-          <div className="ficha-seccion-titulo">Historial de pagos</div>
-          {pagos.length === 0
+          {m.activo !== false && onBaja && (
+            <button className="btn-secundario" onClick={() => onBaja(m)}>Dar de baja</button>
+          )}
+
+          <button className="plegable" onClick={() => setVerPagos(v => !v)}>
+            <span>Finanzas (archivo) · {pagos.length} pago(s)</span>
+            <span>{verPagos ? '▲' : '▼'}</span>
+          </button>
+          {verPagos && (pagos.length === 0
             ? <div className="ficha-vacio">Sin pagos registrados.</div>
             : pagos.map(p => (
                 <div key={p.id} className="ficha-pago" onClick={() => setDetalle(p)}>
@@ -129,32 +134,13 @@ export default function FichaMilitante({ militanteId, etiquetas, fotoUrl, onCerr
                   <div className="ficha-pago-monto">${p.monto}</div>
                   <span className="ficha-pago-flecha">{p.evidencia_path ? '📎' : ''} ›</span>
                 </div>
-              ))
+              )))
           }
-
-          {m.notas && (
-            <>
-              <div className="ficha-seccion-titulo">Notas</div>
-              <div className="ficha-notas">{m.notas}</div>
-            </>
-          )}
-
-          <button className="btn-principal" onClick={() => setPagando(true)}>
-            {estado === 'pagado' ? '+ Registrar otro pago (adelantar meses)' : 'Registrar pago'}
-          </button>
         </div>
       </div>
 
       {detalle && (
         <DetallePago pago={detalle} militante={m} onCerrar={() => setDetalle(null)} onCambio={cargar} />
-      )}
-
-      {pagando && (
-        <FormPago
-          militante={m}
-          onGuardado={async () => { setPagando(false); await cargar(); onCambio?.() }}
-          onCerrar={() => setPagando(false)}
-        />
       )}
     </div>
   )

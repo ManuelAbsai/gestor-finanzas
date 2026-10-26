@@ -1,8 +1,9 @@
 /**
  * Ajustes.jsx
  * ───────────────────────────────────────────────────────────────
- * Administración de catálogos (grupos base, etiquetas,
- * actividades), exportación del padrón, y gestión de la conexión.
+ * Administración de catálogos (grupos base, cargos, etiquetas,
+ * tipos de actividad), plantilla de la orden del día, archivo de
+ * finanzas, exportación del padrón y gestión de la conexión.
  */
 
 import { useState, useEffect } from 'react'
@@ -15,8 +16,13 @@ import { listarMilitantes } from '../lib/militantes.js'
 import { exportarPadronExcel, exportarPadronPDF } from '../lib/exportar.js'
 import { borrarCredenciales, getCredenciales } from '../lib/supabase.js'
 import { PALETA, hexToRgba } from '../lib/colores.js'
+import { listarPlantilla, guardarPlantilla } from '../lib/reuniones.js'
+import {
+  listarTiposActividad, crearTipoActividad, actualizarTipoActividad, eliminarTipoActividad,
+} from '../lib/actividadesGB.js'
+import PuntosEditor, { conClaves } from '../components/PuntosEditor.jsx'
 
-export default function Ajustes({ onDesconectar }) {
+export default function Ajustes({ ir, onDesconectar }) {
   const [gruposBase, setGruposBase]     = useState([])
   const [etiquetas, setEtiquetas]       = useState([])
   const [actividades, setActividades]   = useState([])
@@ -27,14 +33,24 @@ export default function Ajustes({ onDesconectar }) {
   const [nuevaActividad, setNuevaActividad] = useState('')
   const [exportando, setExportando]     = useState(false)
   const [toast, setToast]               = useState(null)
+  const [plantilla, setPlantilla]       = useState([])
+  const [plantillaCambio, setPlantillaCambio] = useState(false)
+  const [tipos, setTipos]               = useState([])
+  const [nuevoTipo, setNuevoTipo]       = useState('')
+  const [colorTipo, setColorTipo]       = useState('#3DAF7D')
 
   async function cargar() {
     setCargando(true)
     try {
-      const [gb, et, ac] = await Promise.all([listarGruposBase(), listarEtiquetas(), listarActividades()])
+      const [gb, et, ac, pl, ti] = await Promise.all([
+        listarGruposBase(), listarEtiquetas(), listarActividades(), listarPlantilla(), listarTiposActividad(),
+      ])
       setGruposBase(gb)
       setEtiquetas(et)
       setActividades(ac)
+      setPlantilla(conClaves(pl))
+      setPlantillaCambio(false)
+      setTipos(ti)
     } finally {
       setCargando(false)
     }
@@ -94,19 +110,46 @@ export default function Ajustes({ onDesconectar }) {
     const nombre = nuevaActividad.trim()
     if (!nombre) return
     if (actividades.some(a => a.nombre.toLowerCase() === nombre.toLowerCase())) {
-      mostrar('Ya existe esa actividad', 'error'); return
+      mostrar('Ya existe ese cargo', 'error'); return
     }
     try {
       await crearActividad(nombre)
       setNuevaActividad('')
       await cargar()
-      mostrar('Actividad creada')
+      mostrar('Cargo creado')
     } catch (e) { mostrar('Error: ' + e.message, 'error') }
   }
 
   async function quitarActividad(id, nombre) {
-    if (!confirm(`¿Eliminar la actividad "${nombre}"? Los militantes que la tengan quedarán sin actividad asignada.`)) return
-    try { await eliminarActividad(id); await cargar(); mostrar('Actividad eliminada') }
+    if (!confirm(`¿Eliminar el cargo "${nombre}"? Los militantes que lo tengan quedarán sin cargo asignado.`)) return
+    try { await eliminarActividad(id); await cargar(); mostrar('Cargo eliminado') }
+    catch (e) { mostrar('Error: ' + e.message, 'error') }
+  }
+
+  async function guardarLaPlantilla() {
+    try {
+      await guardarPlantilla(plantilla.filter(p => p.texto.trim()))
+      await cargar()
+      mostrar('Plantilla guardada ✓')
+    } catch (e) { mostrar('Error: ' + e.message, 'error') }
+  }
+
+  async function agregarTipo() {
+    const nombre = nuevoTipo.trim()
+    if (!nombre) return
+    if (tipos.some(t => t.nombre.toLowerCase() === nombre.toLowerCase())) { mostrar('Ya existe ese tipo', 'error'); return }
+    try { await crearTipoActividad(nombre, colorTipo); setNuevoTipo(''); await cargar(); mostrar('Tipo creado') }
+    catch (e) { mostrar('Error: ' + e.message, 'error') }
+  }
+
+  async function colorDeTipo(id, color) {
+    try { await actualizarTipoActividad(id, { color }); await cargar() }
+    catch (e) { mostrar('Error: ' + e.message, 'error') }
+  }
+
+  async function quitarTipo(id, nombre) {
+    if (!confirm(`¿Eliminar el tipo "${nombre}"? Las actividades que lo tengan quedarán sin tipo.`)) return
+    try { await eliminarTipoActividad(id); await cargar(); mostrar('Tipo eliminado') }
     catch (e) { mostrar('Error: ' + e.message, 'error') }
   }
 
@@ -142,11 +185,54 @@ export default function Ajustes({ onDesconectar }) {
 
       <div className="ajustes-cont">
 
+        {/* ── Plantilla de la orden del día ── */}
+        <section className="panel">
+          <div className="panel-cabecera"><div className="panel-titulo">Plantilla de la orden del día</div></div>
+          <div className="panel-cuerpo">
+            <p className="panel-desc">Los puntos que se repiten cada semana. Cada reunión nueva arranca con ellos, más los acuerdos y tareas que hayan quedado pendientes del acta anterior.</p>
+            <PuntosEditor puntos={plantilla} onChange={l => { setPlantilla(l); setPlantillaCambio(true) }} mostrarOrigen={false} />
+            {plantillaCambio && (
+              <button className="btn-principal" style={{ marginTop: 12 }} onClick={guardarLaPlantilla}>Guardar plantilla</button>
+            )}
+          </div>
+        </section>
+
+        {/* ── Tipos de actividad ── */}
+        <section className="panel">
+          <div className="panel-cabecera"><div className="panel-titulo">Tipos de actividad</div></div>
+          <div className="panel-cuerpo">
+            <p className="panel-desc">Para clasificar el trabajo del GB (pegas, eventos, formación…). Sirven de filtro y para el informe mensual.</p>
+            {tipos.map(t => (
+              <div key={t.id} className="etiqueta-admin">
+                <span className="mini-etiqueta" style={{ background: hexToRgba(t.color, 0.18), color: t.color, borderColor: hexToRgba(t.color, 0.35) }}>{t.nombre}</span>
+                <div className="paleta chica">
+                  {PALETA.map(hex => (
+                    <button key={hex} type="button" className={`color-punto chico ${t.color === hex ? 'sel' : ''}`}
+                            style={{ background: hex }} onClick={() => colorDeTipo(t.id, hex)} />
+                  ))}
+                </div>
+                <button className="item-borrar" onClick={() => quitarTipo(t.id, t.nombre)}>🗑</button>
+              </div>
+            ))}
+            <div className="crear-etiqueta">
+              <input type="text" placeholder="Nuevo tipo (ej. Círculo de estudio)" value={nuevoTipo}
+                     maxLength={32} onChange={e => setNuevoTipo(e.target.value)} />
+              <div className="paleta chica">
+                {PALETA.map(hex => (
+                  <button key={hex} type="button" className={`color-punto chico ${colorTipo === hex ? 'sel' : ''}`}
+                          style={{ background: hex }} onClick={() => setColorTipo(hex)} />
+                ))}
+              </div>
+              <button className="btn-chico primario" onClick={agregarTipo}>Crear tipo</button>
+            </div>
+          </div>
+        </section>
+
         {/* ── Grupos base ── */}
         <section className="panel">
           <div className="panel-cabecera"><div className="panel-titulo">Grupos base</div></div>
           <div className="panel-cuerpo">
-            <p className="panel-desc">Los grupos base aparecen al dar de alta y como filtro. También encabezan el texto de WhatsApp.</p>
+            <p className="panel-desc">Los grupos base aparecen al dar de alta y como filtro de militantes.</p>
             {gruposBase.length === 0
               ? <div className="vacio-chico">Aún no hay grupos base. Crea el primero abajo.</div>
               : gruposBase.map(gb => (
@@ -165,13 +251,13 @@ export default function Ajustes({ onDesconectar }) {
           </div>
         </section>
 
-        {/* ── Actividades (cargo dentro del partido) ── */}
+        {/* ── Cargos (tabla "actividades") ── */}
         <section className="panel">
-          <div className="panel-cabecera"><div className="panel-titulo">Actividades</div></div>
+          <div className="panel-cabecera"><div className="panel-titulo">Cargos</div></div>
           <div className="panel-cuerpo">
-            <p className="panel-desc">El cargo o labor de cada militante (ej. Finanzas, Propaganda, Solo milita). Sirve como filtro en la lista.</p>
+            <p className="panel-desc">El cargo o labor de cada militante (ej. Prensa, Finanzas, Encargado político, Solo milita). Sirve como filtro en la lista.</p>
             {actividades.length === 0
-              ? <div className="vacio-chico">Aún no hay actividades. Crea la primera abajo.</div>
+              ? <div className="vacio-chico">Aún no hay cargos. Crea el primero abajo.</div>
               : actividades.map(a => (
                   <div key={a.id} className="item-lista">
                     <span className="item-nombre">{a.nombre}</span>
@@ -180,7 +266,7 @@ export default function Ajustes({ onDesconectar }) {
                 ))
             }
             <div className="crear-inline">
-              <input type="text" placeholder="Ej. Finanzas, Propaganda…" value={nuevaActividad}
+              <input type="text" placeholder="Ej. Prensa, Propaganda…" value={nuevaActividad}
                      maxLength={40} onChange={e => setNuevaActividad(e.target.value)}
                      onKeyDown={e => e.key === 'Enter' && agregarActividad()} />
               <button className="btn-chico primario" onClick={agregarActividad}>Crear</button>
@@ -229,7 +315,7 @@ export default function Ajustes({ onDesconectar }) {
         <section className="panel">
           <div className="panel-cabecera"><div className="panel-titulo">Exportar padrón</div></div>
           <div className="panel-cuerpo">
-            <p className="panel-desc">Descarga un respaldo con tus militantes activos: nombre, condición, grupo base, actividad, cuota y estado.</p>
+            <p className="panel-desc">Descarga un respaldo con tus militantes activos: nombre, condición, grupo base, cargo, ciudad y teléfono.</p>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn-chico" disabled={exportando} onClick={() => exportar('excel')} style={{ flex: 1 }}>
                 📊 Excel
@@ -238,6 +324,15 @@ export default function Ajustes({ onDesconectar }) {
                 📄 PDF
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* ── Archivo de finanzas ── */}
+        <section className="panel">
+          <div className="panel-cabecera"><div className="panel-titulo">Finanzas (archivo)</div><span className="badge ambar">Histórico</span></div>
+          <div className="panel-cuerpo">
+            <p className="panel-desc">Tu gestión como encargado de finanzas: cobranza, pagos con evidencia, remisiones y concentrado mensual. Se conserva tal cual para consulta; ya no aparece en el menú.</p>
+            <button className="btn-secundario" style={{ marginTop: 0 }} onClick={() => ir('finanzas')}>Abrir archivo de finanzas →</button>
           </div>
         </section>
 
@@ -251,7 +346,7 @@ export default function Ajustes({ onDesconectar }) {
           </div>
         </section>
 
-        <div className="version-nota">Gestor de Finanzas · v1.0</div>
+        <div className="version-nota">PCR · v2.2</div>
       </div>
 
       {toast && <div className={`toast ${toast.tipo}`}>{toast.msg}</div>}
