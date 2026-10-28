@@ -1,8 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════
 --  PCR · Actualización a la app del encargado político
 --  ─────────────────────────────────────────────────────────────
---  Versión 2.2 (agrega categoría, responsable de seguimiento y
---  folio a militantes; antes: canal y descarte de aspirantes). Si ya habías corrido la versión anterior, córrelo
+--  Versión 2.3 (datos completos de aspirantes: correo, edad,
+--  ciudad, ocupación, escuela, motivo; antes: categoría y folio de
+--  militantes, canal y descarte de aspirantes). Si ya habías corrido la versión anterior, córrelo
 --  otra vez completo: solo agrega lo que falta.
 --
 --  Corre este archivo en el SQL Editor de tu Supabase:
@@ -185,6 +186,16 @@ alter table aspirantes add column if not exists canal           text default '';
 alter table aspirantes add column if not exists referido_por    text default '';
 alter table aspirantes add column if not exists motivo_descarte text default '';
 alter table aspirantes add column if not exists descartado_en   date;
+
+-- v2.3: datos completos del formulario de la comisión
+alter table aspirantes add column if not exists correo          text default '';
+alter table aspirantes add column if not exists edad            text default '';  -- rango, ej. 15-17
+alter table aspirantes add column if not exists estado_rep      text default '';  -- estado de la república
+alter table aspirantes add column if not exists ciudad          text default '';
+alter table aspirantes add column if not exists ocupacion       text default '';
+alter table aspirantes add column if not exists escuela_trabajo text default '';
+alter table aspirantes add column if not exists motivo          text default '';
+alter table aspirantes add column if not exists fecha_registro  date;
 
 
 -- ═══ 4. Actividades del grupo base (lo que hacemos) ═══════════

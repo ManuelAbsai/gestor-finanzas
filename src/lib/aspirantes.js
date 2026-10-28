@@ -8,6 +8,7 @@
 import { supabase } from './supabase.js'
 import { hoyISO, mesLegible } from './fechas.js'
 import { crearMilitante } from './militantes.js'
+import { categoriaSugerida } from './lectorContacto.js'
 
 export const ESTADOS_ASPIRANTE = [
   { id: 'contactado',     label: 'Contactado',     clase: 'gris'  },
@@ -58,6 +59,7 @@ export function textoCanal(a) {
  * y el primer contacto anotado (por si se registra con días de atraso).
  */
 export function fechaIngreso(a) {
+  if (a.fecha_registro) return a.fecha_registro
   const fechas = [a.creado_en?.slice(0, 10), ...(a.contactos || []).map(c => c.fecha)].filter(Boolean).sort()
   return fechas[0] || null
 }
@@ -85,6 +87,14 @@ export async function guardarAspirante(datos, id = null) {
   const fila = {
     nombre: datos.nombre.trim(),
     telefono: (datos.telefono || '').trim(),
+    correo: (datos.correo || '').trim(),
+    edad: (datos.edad || '').trim(),
+    estado_rep: (datos.estado_rep || '').trim(),
+    ciudad: (datos.ciudad || '').trim(),
+    ocupacion: (datos.ocupacion || '').trim(),
+    escuela_trabajo: (datos.escuela_trabajo || '').trim(),
+    motivo: (datos.motivo || '').trim(),
+    fecha_registro: datos.fecha_registro || null,
     canal: datos.canal || '',
     referido_por: datos.canal === 'referido' ? (datos.referido_por || '').trim() : '',
     estado: datos.estado || 'contactado',
@@ -147,10 +157,14 @@ export async function convertirEnMilitante(aspirante, grupoBaseId = null) {
   const militante = await crearMilitante({
     nombre: aspirante.nombre,
     telefono: aspirante.telefono || '',
+    correo: aspirante.correo || '',
+    ciudad: aspirante.ciudad || '',
+    estado: aspirante.estado_rep || '',
+    categoria: categoriaSugerida(aspirante),
     condicion: 'simpatizante',
     grupo_base_id: grupoBaseId,
     referencia: textoCanal(aspirante) ? `Aspirante · ${textoCanal(aspirante)}` : 'Aspirante',
-    notas: aspirante.notas || '',
+    notas: [aspirante.motivo && `Por qué se acercó: ${aspirante.motivo}`, aspirante.notas].filter(Boolean).join('\n'),
     fecha_alta: hoyISO(),
   })
   const { error } = await supabase().from('aspirantes').update({
@@ -186,6 +200,9 @@ export function resumenAspirantes(lista, mes) {
     incorporadosPorCanal: contarPor(incorporados, nombreCanal),
     motivos: contarPor(descartados, a => a.motivo_descarte || 'Sin motivo'),
     referidores: contarPor(nuevos.filter(a => a.canal === 'referido' && a.referido_por), a => a.referido_por),
+    porEdad: contarPor(nuevos, a => a.edad || 'Sin dato'),
+    porOcupacion: contarPor(nuevos, a => a.ocupacion || 'Sin dato'),
+    porCiudad: contarPor(nuevos, a => a.ciudad || 'Sin dato'),
   }
 }
 
@@ -216,6 +233,9 @@ export function textoResumenAspirantes(r, { titulo = true } = {}) {
   L.push(`- Descartados: ${r.descartados.length}${r.motivos.length ? ` (${listaConteo(r.motivos)})` : ''}`)
   L.push(`- Siguen en proceso: ${r.enProceso.length}`)
   if (r.referidores.length) L.push(`- Referidos por: ${listaConteo(r.referidores)}`)
+  const conDato = arr => arr.filter(x => x.k !== 'Sin dato')
+  if (conDato(r.porEdad).length) L.push(`- Edades: ${conDato(r.porEdad).map(x => `${x.k} años (${x.n})`).join(', ')}`)
+  if (conDato(r.porOcupacion).length) L.push(`- Ocupación: ${conDato(r.porOcupacion).map(x => `${x.k} (${x.n})`).join(', ')}`)
   return L.join('\n')
 }
 
@@ -227,9 +247,15 @@ export async function exportarAspirantesExcel(lista) {
   const filas = lista.map(a => ({
     Nombre: a.nombre,
     Teléfono: a.telefono || '',
+    Correo: a.correo || '',
+    Edad: a.edad || '',
+    Estado: a.estado_rep || '',
+    Ciudad: a.ciudad || '',
+    Ocupación: a.ocupacion || '',
+    'Escuela o trabajo': a.escuela_trabajo || '',
     Origen: metaCanal(a.canal)?.label || a.como_llego || '',
     'Referido por': a.referido_por || '',
-    Estado: metaEstadoAspirante(a.estado).label,
+    Situación: metaEstadoAspirante(a.estado).label,
     'Fecha de ingreso': fechaIngreso(a) || '',
     'Contactos registrados': a.contactos.length,
     'Último contacto': a.contactos[0]?.fecha || '',
@@ -237,6 +263,7 @@ export async function exportarAspirantesExcel(lista) {
     'Incorporado el': a.incorporado_en || '',
     'Descartado el': a.descartado_en || '',
     'Motivo de descarte': a.motivo_descarte || '',
+    '¿Por qué quiere participar?': a.motivo || '',
     Notas: a.notas || '',
   }))
   const historial = []
@@ -245,7 +272,7 @@ export async function exportarAspirantesExcel(lista) {
   })))
   const libro = XLSX.utils.book_new()
   const h1 = XLSX.utils.json_to_sheet(filas)
-  h1['!cols'] = [28, 14, 12, 18, 15, 14, 10, 14, 14, 14, 14, 20, 40].map(wch => ({ wch }))
+  h1['!cols'] = [28, 14, 26, 8, 14, 14, 16, 24, 12, 18, 15, 14, 10, 14, 14, 14, 14, 20, 40, 40].map(wch => ({ wch }))
   XLSX.utils.book_append_sheet(libro, h1, 'Aspirantes')
   const h2 = XLSX.utils.json_to_sheet(historial.length ? historial : [{ Aspirante: '', Fecha: '', Medio: '', 'Qué se habló': '' }])
   h2['!cols'] = [28, 12, 12, 60].map(wch => ({ wch }))

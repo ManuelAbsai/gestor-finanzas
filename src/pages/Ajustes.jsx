@@ -346,7 +346,7 @@ export default function Ajustes({ ir, onDesconectar }) {
           </div>
         </section>
 
-        <div className="version-nota">PCR · v2.2</div>
+        <div className="version-nota">PCR · v2.3</div>
       </div>
 
       {toast && <div className={`toast ${toast.tipo}`}>{toast.msg}</div>}

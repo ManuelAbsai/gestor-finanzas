@@ -17,6 +17,8 @@ import {
   resumenAspirantes, efectividadPorCanal, textoResumenAspirantes, exportarAspirantesExcel,
 } from '../lib/aspirantes.js'
 import { listarGruposBase } from '../lib/catalogos.js'
+import { listarMilitantes } from '../lib/militantes.js'
+import { leerMensajeContacto, telefonoClave, OCUPACIONES } from '../lib/lectorContacto.js'
 import { copiarTexto } from '../lib/archivos.js'
 import { hoyISO, diaMes, sumarDias, mesActual, mesLegible, ultimosMeses } from '../lib/fechas.js'
 
@@ -175,6 +177,7 @@ export default function Aspirantes({ ir, abrirId = null }) {
       {editando && (
         <FormAspirante
           a={editando}
+          lista={lista}
           onCerrar={() => setEditando(null)}
           onGuardado={async (guardado, eliminado) => {
             setEditando(null)
@@ -269,9 +272,18 @@ function FichaAspirante({ a, onCerrar, onEditar, onCambio, onMensaje, irAMilitan
         <div className="ficha-cuerpo">
           <div className="ficha-seccion-titulo">Datos</div>
           <div className="ficha-fila"><span className="ficha-label">Teléfono</span><span className="ficha-valor">{a.telefono || '—'}</span></div>
+          {a.correo && <div className="ficha-fila"><span className="ficha-label">Correo</span><span className="ficha-valor"><a className="enlace-chico" href={`mailto:${a.correo}`}>{a.correo}</a></span></div>}
+          {a.edad && <div className="ficha-fila"><span className="ficha-label">Edad</span><span className="ficha-valor">{a.edad} años</span></div>}
+          {(a.ciudad || a.estado_rep) && <div className="ficha-fila"><span className="ficha-label">Lugar</span><span className="ficha-valor">{[a.ciudad, a.estado_rep].filter(Boolean).join(', ')}</span></div>}
+          {a.ocupacion && <div className="ficha-fila"><span className="ficha-label">Ocupación</span><span className="ficha-valor">{a.ocupacion}</span></div>}
+          {a.escuela_trabajo && <div className="ficha-fila"><span className="ficha-label">Escuela o trabajo</span><span className="ficha-valor">{a.escuela_trabajo}</span></div>}
           <div className="ficha-fila"><span className="ficha-label">Origen</span><span className="ficha-valor">{textoCanal(a) || '—'}</span></div>
           <div className="ficha-fila"><span className="ficha-label">Ingresó</span><span className="ficha-valor">{diaMes(fechaIngreso(a))}</span></div>
           <div className="ficha-fila"><span className="ficha-label">Próxima llamada</span><span className="ficha-valor">{a.proxima_accion ? diaMes(a.proxima_accion) : '—'}</span></div>
+          {a.motivo && <>
+            <div className="ficha-seccion-titulo">¿Por qué quiere participar?</div>
+            <div className="ficha-notas">“{a.motivo}”</div>
+          </>}
           {a.notas && <div className="ficha-notas" style={{ marginTop: 10 }}>{a.notas}</div>}
 
           <div className="ficha-seccion-titulo">Estado</div>
@@ -364,16 +376,51 @@ function FichaAspirante({ a, onCerrar, onEditar, onCambio, onMensaje, irAMilitan
   )
 }
 
-function FormAspirante({ a, onCerrar, onGuardado }) {
+function FormAspirante({ a, lista = [], onCerrar, onGuardado }) {
   const esEdicion = !!a.id
   const [f, setF] = useState({
     nombre: a.nombre || '', telefono: a.telefono || '',
+    correo: a.correo || '', edad: a.edad || '', estado_rep: a.estado_rep || '', ciudad: a.ciudad || '',
+    ocupacion: a.ocupacion || '', escuela_trabajo: a.escuela_trabajo || '', motivo: a.motivo || '',
+    fecha_registro: a.fecha_registro || '',
     canal: a.canal || '', referido_por: a.referido_por || '',
     estado: a.estado || 'contactado', notas: a.notas || '', proxima_accion: a.proxima_accion || '',
     motivo_descarte: a.motivo_descarte || '', descartado_en: a.descartado_en || '',
   })
   const [guardando, setGuardando] = useState(false)
+  const [pegar, setPegar] = useState(!esEdicion)  // bloque "pegar mensaje" abierto al crear
+  const [mensaje, setMensaje] = useState('')
+  const [leido, setLeido] = useState(null)        // campos reconocidos
+  const [militantes, setMilitantes] = useState([])
   const set = (c, v) => setF(prev => ({ ...prev, [c]: v }))
+
+  useEffect(() => { listarMilitantes({ incluirInactivos: true }).then(setMilitantes).catch(() => {}) }, [])
+
+  function leer(texto) {
+    const { datos, reconocidos } = leerMensajeContacto(texto)
+    if (reconocidos.length === 0) { setLeido([]); return }
+    // Solo se llenan los campos que vinieron en el mensaje
+    setF(prev => {
+      const nuevo = { ...prev }
+      Object.entries(datos).forEach(([k, v]) => { if (v) nuevo[k] = v })
+      return nuevo
+    })
+    setLeido(reconocidos)
+    setPegar(false)
+  }
+
+  async function pegarPortapapeles() {
+    try {
+      const t = await navigator.clipboard.readText()
+      if (t && t.trim()) { setMensaje(t); leer(t); return }
+    } catch { /* sin permiso: que pegue a mano */ }
+    document.getElementById('mensaje-comision')?.focus()
+  }
+
+  // ¿Ya lo tenemos registrado? (por teléfono)
+  const clave = telefonoClave(f.telefono)
+  const repetidoAsp = clave && lista.find(x => x.id !== a.id && telefonoClave(x.telefono) === clave)
+  const repetidoMil = clave && militantes.find(m => telefonoClave(m.telefono) === clave)
 
   async function guardar() {
     if (!f.nombre.trim()) return
@@ -396,8 +443,55 @@ function FormAspirante({ a, onCerrar, onGuardado }) {
           <button className="cerrar" onClick={onCerrar}>✕</button>
         </div>
         <div className="modal-cuerpo">
+          {pegar ? (
+            <div className="sub-bloque pegar-mensaje">
+              <label className="etiqueta-campo">¿Te pasaron el contacto por WhatsApp?</label>
+              <p className="panel-desc">Copia el mensaje completo de la comisión y pégalo aquí. La app llena los campos sola y tú solo revisas.</p>
+              <button type="button" className="btn-copiar" onClick={pegarPortapapeles}>📋 Pegar mensaje copiado</button>
+              <textarea id="mensaje-comision" rows={4} className="input-suelto" value={mensaje}
+                        placeholder="…o mantén presionado aquí y elige Pegar"
+                        onChange={e => setMensaje(e.target.value)} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn-chico" onClick={() => setPegar(false)}>Capturar a mano</button>
+                <button type="button" className="btn-chico primario" style={{ flex: 1 }} disabled={!mensaje.trim()} onClick={() => leer(mensaje)}>Leer datos</button>
+              </div>
+              {leido && leido.length === 0 && <div className="aviso-inline">No reconocí datos en ese texto. Revisa que sea el mensaje completo.</div>}
+            </div>
+          ) : (
+            <button type="button" className="enlace-chico" style={{ marginBottom: 12 }} onClick={() => { setPegar(true); setLeido(null) }}>📋 Pegar mensaje de la comisión</button>
+          )}
+          {leido && leido.length > 0 && (
+            <div className="aviso-suave">✓ Se llenaron: {leido.join(', ')}. Revisa que todo esté bien antes de guardar.</div>
+          )}
+          {(repetidoAsp || repetidoMil) && (
+            <div className="aviso-inline">
+              ⚠ Ese teléfono ya está registrado {repetidoMil ? `en el padrón de militantes (${repetidoMil.nombre}${repetidoMil.activo === false ? ', dado de baja' : ''})` : `como aspirante (${repetidoAsp.nombre}, ${metaEstadoAspirante(repetidoAsp.estado).label.toLowerCase()})`}.
+            </div>
+          )}
+
           <div className="campo"><label>Nombre *</label><input type="text" value={f.nombre} onChange={e => set('nombre', e.target.value)} /></div>
-          <div className="campo"><label>Teléfono</label><input type="tel" value={f.telefono} onChange={e => set('telefono', e.target.value)} /></div>
+          <div className="campo-fila">
+            <div className="campo"><label>Teléfono</label><input type="tel" value={f.telefono} onChange={e => set('telefono', e.target.value)} /></div>
+            <div className="campo"><label>Correo</label><input type="email" value={f.correo} onChange={e => set('correo', e.target.value)} /></div>
+          </div>
+          <div className="campo-fila">
+            <div className="campo"><label>Edad</label>
+              <input type="text" list="rangos-edad" value={f.edad} placeholder="Ej. 15-17" onChange={e => set('edad', e.target.value)} />
+              <datalist id="rangos-edad">{['15-17', '18-24', '25-29', '30-39', '40+'].map(x => <option key={x} value={x} />)}</datalist>
+            </div>
+            <div className="campo"><label>Fecha en que se registró</label><input type="date" value={f.fecha_registro || ''} onChange={e => set('fecha_registro', e.target.value)} /></div>
+          </div>
+          <div className="campo-fila">
+            <div className="campo"><label>Ciudad</label><input type="text" value={f.ciudad} placeholder="Saltillo" onChange={e => set('ciudad', e.target.value)} /></div>
+            <div className="campo"><label>Estado</label><input type="text" value={f.estado_rep} placeholder="Coahuila" onChange={e => set('estado_rep', e.target.value)} /></div>
+          </div>
+          <div className="campo-fila">
+            <div className="campo"><label>Ocupación</label>
+              <input type="text" list="ocupaciones" value={f.ocupacion} placeholder="Estudiante" onChange={e => set('ocupacion', e.target.value)} />
+              <datalist id="ocupaciones">{OCUPACIONES.map(x => <option key={x} value={x} />)}</datalist>
+            </div>
+            <div className="campo"><label>Escuela o trabajo</label><input type="text" value={f.escuela_trabajo} onChange={e => set('escuela_trabajo', e.target.value)} /></div>
+          </div>
           <div className="campo"><label>¿De dónde llegó?</label>
             <div className="chips">
               {CANALES.map(c => (
@@ -426,7 +520,8 @@ function FormAspirante({ a, onCerrar, onGuardado }) {
               <SelectorMotivo valor={f.motivo_descarte} onChange={v => set('motivo_descarte', v)} />
             </div>
           )}
-          <div className="campo"><label>Notas</label><textarea rows={3} value={f.notas} onChange={e => set('notas', e.target.value)} /></div>
+          <div className="campo"><label>¿Por qué quiere participar?</label><textarea rows={3} value={f.motivo} onChange={e => set('motivo', e.target.value)} /></div>
+          <div className="campo"><label>Notas tuyas</label><textarea rows={2} value={f.notas} onChange={e => set('notas', e.target.value)} /></div>
           <button className="btn-principal" disabled={guardando || !f.nombre.trim()} onClick={guardar}>{guardando ? 'Guardando…' : (esEdicion ? 'Guardar cambios' : 'Registrar aspirante')}</button>
           {esEdicion && <button className="btn-secundario peligro" onClick={borrar}>Eliminar aspirante</button>}
         </div>
@@ -513,6 +608,19 @@ function ResumenMes({ lista, onMensaje }) {
           </div>
         </section>
       </div>
+
+      {r.nuevos.length > 0 && (
+        <div className="informe-grid tres">
+          {[['Edades', r.porEdad], ['Ocupación', r.porOcupacion], ['Ciudad', r.porCiudad]].map(([titulo, datos]) => (
+            <section key={titulo} className="panel">
+              <div className="panel-cabecera"><div className="panel-titulo">{titulo} de los nuevos</div></div>
+              <div className="panel-cuerpo">
+                {datos.map(x => <div key={x.k} className="inicio-punto"><b>{x.n}</b> · {x.k}</div>)}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       <section className="panel dash-panel">
         <div className="panel-cabecera"><div className="panel-titulo">Qué canal funciona mejor (todo el registro)</div></div>

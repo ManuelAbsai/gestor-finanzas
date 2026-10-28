@@ -123,7 +123,7 @@ export async function verificarTablas() {
 
   // Columnas agregadas en versiones posteriores (v2.1)
   if (!faltantes.includes('aspirantes')) {
-    const { error } = await supabase().from('aspirantes').select('canal, referido_por, motivo_descarte, descartado_en').limit(1)
+    const { error } = await supabase().from('aspirantes').select('canal, referido_por, motivo_descarte, descartado_en, correo, edad, estado_rep, ciudad, ocupacion, escuela_trabajo, motivo, fecha_registro').limit(1)
     if (error && (error.code === '42703' || /column .* does not exist/i.test(error.message))) {
       faltantes.push('columnas nuevas de aspirantes')
     }

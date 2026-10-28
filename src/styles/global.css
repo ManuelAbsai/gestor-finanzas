@@ -1316,3 +1316,11 @@ textarea:focus-visible {
   .solo-escritorio { display: none; }
   .solo-movil { display: table; }
 }
+
+/* ── PCR v2.3 · Pegar mensaje de la comisión ── */
+.pegar-mensaje .btn-copiar { margin-bottom: 8px; }
+.pegar-mensaje textarea.input-suelto { resize: vertical; font-size: 12px; }
+.informe-grid.tres { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 768px) {
+  .informe-grid.tres { grid-template-columns: 1fr; }
+}
